@@ -106,9 +106,7 @@ def find_serial_port():
     for p in serial.tools.list_ports.comports():
         if p.vid == 0x1a86:
             return p.device
-    # Fallback: glob
-    candidates = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*')
-    return candidates[0] if candidates else None
+    return None
 
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
