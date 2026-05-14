@@ -41,8 +41,17 @@ import threading
 
 # ─── Socket path ──────────────────────────────────────────────────────────────
 
-SOCK_PATH = os.path.join(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'),
-                         'paperlike.sock')
+def _default_sock_path():
+    """Linux: XDG_RUNTIME_DIR (or /run/user/UID). macOS / no XDG: /tmp/paperlike-<UID>.sock."""
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    if runtime and os.path.isdir(runtime):
+        return os.path.join(runtime, 'paperlike.sock')
+    if sys.platform == 'linux':
+        return f'/run/user/{os.getuid()}/paperlike.sock'
+    # macOS/BSD: XDG_RUNTIME_DIR isn't a thing; /tmp is fine, namespace by UID to avoid collisions.
+    return f'/tmp/paperlike-{os.getuid()}.sock'
+
+SOCK_PATH = _default_sock_path()
 
 
 # ─── Protocol ────────────────────────────────────────────────────────────────
@@ -157,7 +166,9 @@ def query_device_info(ser):
 # ─── Display detection / dithering ────────────────────────────────────────────
 
 def find_paperlike_connector():
-    """Find DRM connector for the Paperlike display."""
+    """Find DRM connector for the Paperlike display (Linux only). Returns None elsewhere."""
+    if sys.platform != 'linux':
+        return None
     for edid_path in sorted(glob.glob('/sys/class/drm/card*-*/edid')):
         try:
             with open(edid_path, 'rb') as f:
@@ -171,7 +182,16 @@ def find_paperlike_connector():
 
 
 def try_disable_dithering(verbose=True):
-    """Attempt to disable GPU dithering."""
+    """Attempt to disable GPU dithering.
+
+    Linux-only — uses xrandr + /sys/kernel/debug/dri/*/amdgpu_dm_dither. On macOS
+    the GPU/display pipeline doesn't expose a comparable knob from userspace, and
+    the Paperlike's MCU-side dithering is controlled separately via 0x20 commands.
+    """
+    if sys.platform != 'linux':
+        if verbose:
+            print("\n--- Disable GPU dithering --- (skipped: not Linux)")
+        return
     if verbose:
         print("\n--- Disable GPU dithering ---")
     connector = find_paperlike_connector()
@@ -614,8 +634,13 @@ daemon reconnect:
         port = find_serial_port()
         if not port:
             print("ERROR: No CH340/CH341 serial port found.")
-            print("  sudo modprobe ch341")
-            print("  sudo usermod -aG dialout $USER")
+            if sys.platform == 'linux':
+                print("  sudo modprobe ch341")
+                print("  sudo usermod -aG dialout $USER")
+            elif sys.platform == 'darwin':
+                print("  Plug the Paperlike USB-C upstream cable into the Mac.")
+                print("  macOS 11+ ships AppleUSBCHCOM (CH340 driver) built-in; the")
+                print("  /dev/cu.usbserial-XXXX node appears as soon as the cable is in.")
             sys.exit(1)
         print(f"Auto-detected: {port}")
 

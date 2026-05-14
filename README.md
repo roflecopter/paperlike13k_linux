@@ -1,20 +1,42 @@
-# Paperlike 13K 2025 Color — Linux Init Script
+# Paperlike 13K 2025 Color — Init Script
 
-Open-source Linux init script for the DASUNG Paperlike 13K 2025 color e-ink display.
+Open-source init script for the DASUNG Paperlike 13K 2025 color e-ink display.
 Replaces the proprietary PaperLikeClient app with a standalone Python script.
+
+Works on Linux and macOS. The CH340 USB-serial control channel is the same on both;
+Linux-specific bits (DRM EDID detection, xrandr dithering, `XDG_RUNTIME_DIR` socket
+path) are auto-skipped on macOS.
 
 ## Requirements
 
 - Python 3 + pyserial (`pip install pyserial`)
-- ch341 kernel module (usually loaded automatically)
+- USB-C upstream cable from Paperlike's data port to the host (carries video + USB
+  data over the same cable on the 2025 Color)
+- **Linux**: ch341 kernel module (usually loaded automatically) and the user in
+  `dialout` group
+- **macOS** (11+): nothing to install — built-in `AppleUSBCHCOM` driver
+  enumerates the CH340 as `/dev/cu.usbserial-XXXX` automatically when the cable
+  is plugged in
 
 ## Setup
 
+### Linux
 ```bash
 pip install pyserial
 sudo usermod -aG dialout $USER   # allow serial port access
 # Log out and back in for group change to take effect
 ```
+
+### macOS
+```bash
+# Use a venv to avoid PEP 668 / external-managed-environment issues:
+python3 -m venv .venv
+.venv/bin/pip install pyserial
+# Then invoke the script via .venv/bin/python3 paperlike_init_linux.py …
+```
+
+The Unix-socket daemon path falls back to `/tmp/paperlike-<UID>.sock` on macOS
+(since there's no `XDG_RUNTIME_DIR`); everything else is identical.
 
 ## Usage
 
