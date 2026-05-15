@@ -219,21 +219,24 @@ def try_disable_dithering(verbose=True):
 # ─── Control socket (daemon IPC) ─────────────────────────────────────────────
 
 def daemon_is_running():
-    """Check if a daemon is listening on the control socket."""
+    """Check if a daemon is listening on the control socket.
+
+    Returning False on connect failure must NOT unlink the socket file: the
+    daemon may still be listening on the underlying fd (its accept thread can
+    be momentarily busy, or our probe may hit a transient timeout). Unlinking
+    here orphans a healthy daemon — the daemon stays alive holding the fd,
+    but no new client can find the path. Leave the file alone; the daemon
+    re-binds it on its own restart / disconnect-reconnect cycle.
+    """
     if not os.path.exists(SOCK_PATH):
         return False
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(2)
+        s.settimeout(5)
         s.connect(SOCK_PATH)
         s.close()
         return True
     except (ConnectionRefusedError, OSError):
-        # Stale socket
-        try:
-            os.unlink(SOCK_PATH)
-        except OSError:
-            pass
         return False
 
 
@@ -263,7 +266,7 @@ def start_control_socket(ser, serial_lock):
 
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(SOCK_PATH)
-    srv.listen(2)
+    srv.listen(16)
     srv.settimeout(1)  # allow periodic check for shutdown
 
     def handle_client(conn):
